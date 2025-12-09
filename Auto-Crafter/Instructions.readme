@@ -1,0 +1,35 @@
+﻿if you want to automatically request some amount of item, 
+put the items you want using "Type/Name" under "[Requests]" in the CustomData of your Inventory
+
+ex:
+[Requests]
+Component/SteelPlate=10
+Ingot/Iron=10
+Ore/Iron=10
+ConsumableItem/ClangCola=10
+PhysicalGunObject/Welder2Item=10
+AmmoMagazine/LargeCalibreAmmo=10
+OxygenContainerObject/OxygenBottle=10
+GasContainerObject/HydrogenBottle=10
+SeedItem/Fruit=10
+
+(More Examples on the Workshop Page)
+
+if you want to automatically sort inventory by type:
+
+[Sorter]
+filter = AmmoMagazine, PhysicalGunObject, ConsumableItem, Ore, Ingot, Component, SeedItem
+
+
+"What the script is doing?" 
+you can setup 1-4 lcds to debug the script, Set the debug tag as the first line on the CustomData
+Available tags:
+[debug-autocrafter-request]
+[debug-autocrafter-craft]
+[debug-autocrafter-sort]
+[debug-autocrafter-items]
+
+Check instructions on the mod Workshop Page:
+https://steamcommunity.com/sharedfiles/filedetails/?id=3367063290
+
+
