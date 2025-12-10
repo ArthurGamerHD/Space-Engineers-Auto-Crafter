@@ -34,19 +34,18 @@ namespace IngameScript
                 string[] types = ini.Get("Meta", "Types").ToString().Split(',');
                 string[] ores = ini.Get("Meta", "Ores").ToString().Split(',');
                 string[] ingots = ini.Get("Meta", "Ingots").ToString().Split(',');
-
-                var keys = new List<MyIniKey>();
+                
                 var debugSb = new StringBuilder();
-                const int BatchSize = 25;
+                const int BATCH_SIZE = 25;
                 for (var index = 0; index < types.Length; index++)
                 {
                     var type = types[index];
-                    if(index % BatchSize == 0)
+                    if(index % BATCH_SIZE == 0)
                         Echo(sb + $"\nLoading Translation...\n ({index + 1}/{types.Length} {type})");
-                    keys.Clear();
-
-                    ini.GetKeys($"Translation_{index}", keys);
-                    foreach (var key in keys)
+                    
+                    _iniKeys.Clear();
+                    ini.GetKeys($"Translation_{index}", _iniKeys);
+                    foreach (var key in _iniKeys)
                     {
                         var itemKey = OB + type + "/" + key.Name;
                         var localizedName = ini.Get(key).ToString().Replace("%s", key.Name)
@@ -88,7 +87,7 @@ namespace IngameScript
                         if (canUse)
                             defs.Add(pb.Value.First().BlockDefinition.ToString());
                     }
-                    if(index % BatchSize == 0)
+                    if(index % BATCH_SIZE == 0)
                         Echo(sb + $"\nParsing Recipe...\n{index + 1}/{names.Count}\n({id})");
 
                     _definitionPerRecipe[name] = defs;
@@ -241,7 +240,7 @@ namespace IngameScript
 
                     MyLog.Log(LogLevel.Debug, $"{name}\n" + rqSb);
 
-                    if(index % BatchSize == 0)
+                    if(index % BATCH_SIZE == 0)
                         yield return true;
                 }
 

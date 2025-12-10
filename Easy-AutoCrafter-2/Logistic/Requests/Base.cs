@@ -34,7 +34,10 @@ namespace IngameScript
                 get { return _current; }
                 set
                 {
+                    var delta = value - _current;
                     _current = value;
+                    CurrentCrafting -= delta;
+                    
                     if (!Closed) 
                         return;
                     

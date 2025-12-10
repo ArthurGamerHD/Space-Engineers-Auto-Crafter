@@ -1,5 +1,16 @@
-﻿R e a d m e
------------
+﻿Easy Auto Crafter 2
 
-In this file you can include any instructions or other comments you want to have injected onto the 
-top of your final script. You can safely delete this file if you do not want any such comments.
+Setup:
+Put [Autocrafter] on the Custom Data of blocks you want this script to control (LCD's, Refineries, Assemblers)
+
+if you want to request Item to inventory to be delivered or crafted: (without '//')
+[Requests]
+Component/SteelPlate=10
+
+(the format is "<Type>/<Name>=<Amount>")
+(get the full list of known items by running the PB with the argument "Requests")
+
+if you want to Sort items into Cargos, use: (without '//')
+[Sorter]
+filter = AmmoMagazine, PhysicalGunObject, ConsumableItem, Ore, Ingot, Component, SeedItem
+

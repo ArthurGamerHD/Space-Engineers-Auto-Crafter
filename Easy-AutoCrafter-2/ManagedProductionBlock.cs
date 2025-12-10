@@ -26,9 +26,9 @@ namespace IngameScript
 
             public void GetQueue(List<MyProductionItem> queueCache) => ProductionBlock.GetQueue(queueCache);
 
-            public virtual void Tick()
+            public virtual void Tick(Program program)
             {
-                if (Request.Closed)
+                if (Request?.Closed ?? false)
                     Request = null;
             }
         }
@@ -40,7 +40,7 @@ namespace IngameScript
             public ManagedAssembler(IMyAssembler assembler)
             {
                 Assembler = assembler;
-                //assembler.ClearQueue();
+                assembler.ClearQueue();
                 assembler.CooperativeMode = false;
             }
 
@@ -81,6 +81,16 @@ namespace IngameScript
 
                 upgradableBlock.FillUpgradesDictionary(upgrades);
                 Efficiency = upgrades["Effectiveness"];
+            }
+
+            public override void Tick(Program program)
+            {
+                base.Tick(program);
+
+                Refinery.UseConveyorSystem = !IsBusy;
+                
+                if(Request != null && Refinery.InputInventory.VolumeFillFactor < 0.01f)
+                    program.MoveItemToRefinery(Request.Item, this);
             }
         }
 

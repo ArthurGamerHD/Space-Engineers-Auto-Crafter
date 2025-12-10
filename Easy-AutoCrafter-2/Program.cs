@@ -26,11 +26,11 @@ namespace IngameScript
     public partial class Program : MyGridProgram
     {
         bool _companion;
-        int _lastOperations = 1, _currentOperations, _operations;
+        int _lastOperations = 1, _currentOperations;
         double _throttle;
-        
+
         Dictionary<string, float> _upgrades = new Dictionary<string, float>();
-        bool _ran = false;
+        bool _ran;
 
         ScreenWidgetBase _screenSaverWidgetBase;
 
@@ -41,14 +41,20 @@ namespace IngameScript
 
         SortedSet<ManagedAssembler> _assemblers = new SortedSet<ManagedAssembler>(ProductionComparer.Default);
         SortedSet<ManagedRefinery> _refineries = new SortedSet<ManagedRefinery>(ProductionComparer.Default);
-        List<ManagedProductionBlock> _tempProductionBlocks = new List<ManagedProductionBlock>();
+        List<ManagedProductionBlock> _productionBlocks = new List<ManagedProductionBlock>();
 
         List<IMyTerminalBlock> _containers = new List<IMyTerminalBlock>();
         List<ScreenWidgetBase> _widgets = new List<ScreenWidgetBase>();
 
+        Dictionary<string, Action> _actions;
+        string _actionsNames;
 
         MyIni _ini = new MyIni();
         SortedDictionary<string, Item> _stock = new SortedDictionary<string, Item>();
+
+        SortedDictionary<string, SortedDictionary<string, Item>> _perTypeStock =
+            new SortedDictionary<string, SortedDictionary<string, Item>>();
+
         SortedDictionary<string, double> _predictedCost = new SortedDictionary<string, double>();
         SortedDictionary<string, string> _translation = new SortedDictionary<string, string>();
         readonly List<MyInventoryItem> _itemsBuffer = new List<MyInventoryItem>();
@@ -59,6 +65,7 @@ namespace IngameScript
         string _currentCraftString;
 
         double _assemblerEfficiency = 1;
+        bool _requireTag = true;
 
         Dictionary<IMyInventory, Inventory> _perInventoryStorage = new Dictionary<IMyInventory, Inventory>();
 
@@ -75,7 +82,7 @@ namespace IngameScript
         bool _translateEnabled; // Enable translate feature globally
         bool _rebuild;
 
-        List<MyIniKey> _translationKeys = new List<MyIniKey>();
+        List<MyIniKey> _iniKeys = new List<MyIniKey>();
 
         IMyTextPanel _debugRequest, _debugCraft, _debugSort, _debugItems, _debugLog;
 
@@ -88,7 +95,7 @@ namespace IngameScript
             { "OxygenContainerObject", ItemTypes.PhysicalGunObject },
         };
 
-        readonly StringBuilder _widgetNames= new StringBuilder();
+        readonly StringBuilder _widgetNames = new StringBuilder();
 
         bool _lock;
 
@@ -96,16 +103,39 @@ namespace IngameScript
         {
             Runtime.UpdateFrequency = UpdateFrequency.Update10 | UpdateFrequency.Update100 | UpdateFrequency.Once;
 
-            foreach (var name in Enum.GetNames(typeof(Widgets))) 
+            foreach (var name in Enum.GetNames(typeof(Widgets)))
                 _widgetNames.Append(name + ", ");
-            
+
             ReadConfig();
             UpdateGrid();
             _screenStateMachine = ScreenRoutine();
-            //ParseBlueprintDataBase();
-
             _screenSaverWidgetBase = new ScreenSaver(Me.GetSurface(0));
+            _actions = new Dictionary<string, Action>
+            {
+                ["rebuild"] = Rebuild,
+                ["clear"] = Clear,
+                ["requests"] = DumpRequests,
+#if DEBUG
+                ["dumpstock"] = Dump,
+                ["dumpblueprints"] = DumpBlueprints,
+                ["dumpcompanion"] = DumpCompanion
+#endif
+            };
+
+            var sb = new StringBuilder("Commands: ");
+            foreach (var name in _actions.Keys) sb.Append(char.ToUpper(name[0]) + name.Substring(1) + ", ");
+            _actionsNames = sb.ToString().TrimEnd(',');
         }
+
+        void Clear()
+        {
+            _craftRequests.Clear();
+            _refineRequests.Clear();
+            foreach (var item in _productionBlocks)
+                item.Request = null;
+        }
+
+        void Rebuild() => _rebuild = true;
 
         public void Main(string argument, UpdateType updateSource)
         {
@@ -142,9 +172,6 @@ namespace IngameScript
 
         public void Run(string argument, UpdateType updateSource)
         {
-            if ((updateSource & UpdateType.Terminal) == UpdateType.Terminal)
-                UpdateGrid();
-            
             if (!string.IsNullOrEmpty(argument))
                 HandleArgument(argument);
 
@@ -166,33 +193,14 @@ namespace IngameScript
 
         void HandleArgument(string argument)
         {
-            if (argument == "count" && _stateMachine == null)
+            var arg = argument.ToLower();
+            if (!_actions.ContainsKey(arg))
             {
-                _stateMachine = CountingRoutine();
-                RunStateMachine();
+                Echo("Unknown argument: " + arg);
+                return;
             }
 
-            switch (argument.ToLower())
-            {
-                case "rebuild":
-                    _rebuild = true;
-                    break;
-                case "clear":
-                    _craftRequests.Clear();
-                    _refineRequests.Clear();
-                    break;
-#if DEBUG
-                case "dumpstock":
-                    Dump();
-                    break;
-                case "dumpblueprints":
-                    DumpBlueprints();
-                    break;
-                case "dumpcompanion":
-                    DumpCompanion();
-                    break;
-#endif
-            }
+            _actions[arg].Invoke();
         }
 
 
@@ -212,7 +220,7 @@ namespace IngameScript
 
         public void RunOperations()
         {
-            if(_ran)
+            if (_ran)
                 return;
 
             _ran = true;
@@ -220,14 +228,14 @@ namespace IngameScript
 
             if (_delayCounter >= _delay && _stateMachine == null)
             {
+                foreach (var block in _productionBlocks) block.Tick(this);
+
                 if (_rebuild)
                 {
                     _rebuild = false;
                     ReadConfig();
                     UpdateGrid();
                 }
-
-                _operations += _currentOperations;
 
                 switch (_runningOperation)
                 {
@@ -255,8 +263,8 @@ namespace IngameScript
 
                 if (_runningOperation > Operations.Sorting)
                 {
-                    _lastOperations = _operations;
-                    _operations = 0;
+                    _lastOperations = _currentOperations;
+                    _currentOperations = 0;
                     _runningOperation = Operations.Counting;
                     ReadConfig();
                 }
@@ -279,7 +287,8 @@ namespace IngameScript
                 _rebuildCounter++;
             }
 
-            Echo("Items tracked: " + _stock.Count);
+            Echo(_actionsNames);
+            Echo("Items tracked: " + _stock.Count + $" ({_perTypeStock.Count} Types)");
             Echo("Recipes Known: " + _stock.Count(a => a.Value.Blueprint != null) + $" ({_definitionPerRecipe.Count})");
             Echo("Assemblers: " + _assemblers.Count);
             Echo("Actions Count: " + _lastOperations);
@@ -330,12 +339,12 @@ namespace IngameScript
                 i++;
             }
         }
-        
+
         void UpdateScreens()
         {
             _screenSaverWidgetBase.Draw();
             AnimationFrame++;
-            
+
             int i = 0;
             int target = (int)((Runtime.MaxInstructionCount - 500f) * _throttle);
             while (Runtime.CurrentInstructionCount < target && i < MAX_YIELD_PER_CYCLE)
@@ -344,10 +353,10 @@ namespace IngameScript
                 {
                     bool hasMoreSteps = _screenStateMachine.MoveNext();
                     bool finishedCycle = _screenStateMachine.Current;
-                    
-                    if(finishedCycle)
+
+                    if (finishedCycle)
                         break;
-                    
+
                     if (!hasMoreSteps)
                     {
                         MyLog.Log(LogLevel.Error, "Screen Thread Ended Prematurely");
@@ -376,14 +385,14 @@ namespace IngameScript
 
             _currentCraftSb.Clear();
             _containers.Clear();
-            _tempProductionBlocks.Clear();
+            _productionBlocks.Clear();
             GridTerminalSystem.GetBlocksOfType<IMyTerminalBlock>(_containers, block =>
             {
                 if (!block.IsSameConstructAs(Me) || block == Me)
                     return false;
 
                 var productionBlock = block as IMyProductionBlock;
-                if (productionBlock != null)
+                if (productionBlock != null && (!_requireTag || productionBlock.CustomData.Contains($"[{SETTINGS_GENERAL}]")))
                     CatalogProductionBlock(productionBlock);
 
                 var panel = block as IMyTextPanel;
@@ -391,7 +400,7 @@ namespace IngameScript
                 {
                     if (panel.CustomData.ToLower().Contains($"[{SETTINGS_GENERAL.ToLower()}]"))
                         AddWidget(panel);
-                    
+
                     var line = panel.CustomData.Split('\n').First().ToLower();
                     if (!line.StartsWith($"[{DEBUG}") || !line.EndsWith($"]"))
                         return false;
@@ -422,7 +431,8 @@ namespace IngameScript
                 }
 
                 var provider = block as IMyTextSurfaceProvider;
-                if (provider != null && ((IMyTerminalBlock)provider).CustomData.ToLower().Contains($"[{SETTINGS_GENERAL.ToLower()}]"))
+                if (provider != null && ((IMyTerminalBlock)provider).CustomData.ToLower()
+                    .Contains($"[{SETTINGS_GENERAL.ToLower()}]"))
                     AddWidget(provider as IMyTerminalBlock);
 
                 return block.HasInventory & block.ShowInInventory;
@@ -430,15 +440,13 @@ namespace IngameScript
 
             _assemblers.Clear();
             _refineries.Clear();
-            foreach (var productionBlock in _tempProductionBlocks)
+            foreach (var productionBlock in _productionBlocks)
             {
-                if(productionBlock is ManagedAssembler)
+                if (productionBlock is ManagedAssembler)
                     _assemblers.Add(productionBlock as ManagedAssembler);
-                else if(productionBlock is ManagedRefinery)
+                else if (productionBlock is ManagedRefinery)
                     _refineries.Add(productionBlock as ManagedRefinery);
             }
-            
-            _tempProductionBlocks.Clear();
         }
 
         void AddWidget(IMyTerminalBlock panel)
@@ -456,8 +464,9 @@ namespace IngameScript
                 var setting = "Screen";
                 if (provider != null)
                     setting += i;
-                
-                var sf = _ini.Get(SETTINGS_GENERAL, setting).ToString(i == 0 ? nameof(Widgets.CraftMonitor) : nameof(Widgets.None));
+
+                var sf = _ini.Get(SETTINGS_GENERAL, setting)
+                    .ToString(i == 0 ? nameof(Widgets.CraftMonitor) : nameof(Widgets.None));
 
                 Widgets widget;
                 if (!Enum.TryParse(sf, out widget))
@@ -474,19 +483,20 @@ namespace IngameScript
                     case Widgets.CraftMonitor:
                         surface = surface ?? provider?.GetSurface(i);
                         var existing = _widgets.FirstOrDefault(a => a.Surface == surface);
-                        if (existing is CraftMonitor) 
+                        if (existing is CraftMonitor)
                             break;
-                        if(existing != null)
+                        if (existing != null)
                             _widgets.Remove(existing);
 
                         _widgets.Add(new CraftMonitor(surface, panel, this));
                         break;
                 }
-                
+
                 _ini.Set(SETTINGS_GENERAL, $"Screen{i}", widget.ToString());
 
-                if(i == 0)
-                    _ini.SetComment(SETTINGS_GENERAL, $"Screen{i}", $"The current Widget to be shown on this screen\nAllowed Widgets: {_widgetNames}");
+                if (i == 0)
+                    _ini.SetComment(SETTINGS_GENERAL, $"Screen{i}",
+                        $"The current Widget to be shown on this screen\nAllowed Widgets: {_widgetNames}");
             }
 
             panel.CustomData = _ini.ToString();
@@ -505,11 +515,15 @@ namespace IngameScript
             {
                 item = new Item(itemName, this);
                 _stock[itemName] = item;
-
                 string translation;
                 item.NaturalName = _translation.TryGetValue(item.KeyString, out translation)
                     ? translation
                     : item.Name;
+
+                if (!_perTypeStock.ContainsKey(item.Type))
+                    _perTypeStock[item.Type] = new SortedDictionary<string, Item>();
+
+                _perTypeStock[item.Type][itemName] = item;
             }
 
             return item;
@@ -519,6 +533,7 @@ namespace IngameScript
         {
             if (_ini.TryParse(Me.CustomData))
             {
+                _requireTag = _ini.Get(SETTINGS_GENERAL, "RequireTag").ToBoolean(_requireTag);
                 _assemblerEfficiency = _ini.Get(SETTINGS_GENERAL, "AssemblerEfficiency").ToDouble(1);
                 _delay = _ini.Get(SETTINGS_GENERAL, "delay").ToInt32(1);
                 _rebuildDelay = _ini.Get(SETTINGS_GENERAL, "rebuildDelay").ToInt32(200);
@@ -526,9 +541,9 @@ namespace IngameScript
                 _translateEnabled = _ini.ContainsSection("translation");
                 if (_translateEnabled)
                 {
-                    _translationKeys.Clear();
-                    _ini.GetKeys("translation", _translationKeys);
-                    foreach (var key in _translationKeys)
+                    _iniKeys.Clear();
+                    _ini.GetKeys("translation", _iniKeys);
+                    foreach (var key in _iniKeys)
                     {
                         var lowerkey = key.Name.ToLower();
                         if (_translation.ContainsKey(lowerkey))
@@ -541,9 +556,14 @@ namespace IngameScript
                 if (_ini.ContainsSection(SETTINGS_GENERAL))
                     return;
 
+                _ini.Set(SETTINGS_GENERAL, "RequireTag", _requireTag);
+                _ini.SetComment(SETTINGS_GENERAL, "RequireTag",
+                    "if False, All assemblers and refineries will be used controlled by the script,\n" +
+                    $"if True for only control blocks with tag [{SETTINGS_GENERAL}]");
+
                 _ini.Set(SETTINGS_GENERAL, "AssemblerEfficiency", _assemblerEfficiency);
                 _ini.SetComment(SETTINGS_GENERAL, "AssemblerEfficiency",
-                    "Defines the assembler efficiency, Only used if [Blueprints] is set");
+                    "Defines the assembler efficiency, (Not implemented yet).");
                 _ini.Set(SETTINGS_GENERAL, "throttle", (int)(_throttle * 100f));
                 _ini.SetComment(SETTINGS_GENERAL, "throttle",
                     $"Defines how much % of the {Runtime.MaxInstructionCount} instructions the script should use (default 10%)");
@@ -554,9 +574,11 @@ namespace IngameScript
                 _ini.SetComment(SETTINGS_GENERAL, "rebuildDelay",
                     "Defines the delay between scanning for new blocks (Cargo, Assemblers, etc)");
                 Me.CustomData = _ini.ToString(true);
+
+                LoadRefinePrioritySettings(_ini);
             }
         }
-        
+
         public void CatalogProductionBlock(IMyProductionBlock productionBlock)
         {
             List<IMyProductionBlock> blocks;
@@ -570,13 +592,14 @@ namespace IngameScript
             blocks.Add(productionBlock);
 
             _upgrades.Clear();
-            
+
             var assembler = productionBlock as IMyAssembler;
             if (assembler != null)
             {
-                var managed = _assemblers.FirstOrDefault(a => a.Assembler == assembler) ?? new ManagedAssembler(assembler);
+                var managed = _assemblers.FirstOrDefault(a => a.Assembler == assembler) ??
+                              new ManagedAssembler(assembler);
                 managed.CalculateProductivity(_upgrades);
-                _tempProductionBlocks.Add(managed);
+                _productionBlocks.Add(managed);
             }
 
             var refinery = productionBlock as IMyRefinery;
@@ -584,7 +607,7 @@ namespace IngameScript
             {
                 var managed = _refineries.FirstOrDefault(a => a.Refinery == refinery) ?? new ManagedRefinery(refinery);
                 managed.CalculateEffectiveness(_upgrades);
-                _tempProductionBlocks.Add(managed);
+                _productionBlocks.Add(managed);
             }
         }
     }

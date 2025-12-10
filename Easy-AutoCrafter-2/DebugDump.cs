@@ -1,11 +1,21 @@
 ﻿using System.Text;
 using Sandbox.ModAPI.Interfaces;
+using VRage.Game.GUI.TextPanel;
 
 namespace IngameScript
 {
     public partial class Program
     {
-                
+
+        void DumpRequests()
+        {
+            _ini.Clear();
+            foreach (var item in _stock) 
+                _ini.Set("Requests", item.Value.Type + "/" + item.Value.Name, 0);
+            _screenSaverWidgetBase.Surface.WriteText(_ini.ToString());
+            _screenSaverWidgetBase.Surface.ContentType = ContentType.TEXT_AND_IMAGE;
+        }
+        
 #if DEBUG
         void Dump()
         {

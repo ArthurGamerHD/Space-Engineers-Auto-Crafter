@@ -28,7 +28,7 @@ namespace IngameScript
                     if (_perInventoryStorage.TryGetValue(inventory, out value))
                         perInventoryStorage[inventory] = value;
                     else
-                        perInventoryStorage[inventory] = new Inventory(inventory);
+                        perInventoryStorage[inventory] = new Inventory(inventory, this);
 
                     if (inventory.ItemCount <= 0)
                     {

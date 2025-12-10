@@ -109,8 +109,8 @@ namespace IngameScript
             foreach (var item in _countingDelta)
             {
                 FulfillRequests(item.Key, item.Value);
-                yield return true;
             }
+            yield return true;
 
             
             if (_debugCraft != null)

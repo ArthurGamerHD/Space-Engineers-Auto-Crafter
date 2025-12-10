@@ -9,8 +9,6 @@ namespace IngameScript
     {
         class CraftRequest : ProductionRequestBase
         {
-            int _current;
-
             public CraftRequest(int amount, Item item)
             {
                 Amount = amount;

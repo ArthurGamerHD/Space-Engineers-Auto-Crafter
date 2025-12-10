@@ -25,9 +25,11 @@ namespace IngameScript
 
             foreach (var request in _craftRequests)
             {
-                var maximum = request.Missing - request.CurrentCrafting;
-                if (maximum < 1)
+                // Prevents multiples craft order of the same item
+                if (request.Closed || request.CurrentCrafting > 0)
                     continue;
+
+                var maximum = request.Missing;
 
                 _currentCraftSb.Append($" -{request.Amount:0} " + request.Item.NaturalName);
 

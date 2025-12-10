@@ -97,7 +97,7 @@ namespace IngameScript
                                             break;
                         }
 
-                        success |= MoveItemToRefinery(request, refinery);
+                        success |= MoveItemToRefinery(request.Item, refinery);
 
                         if (success)
                         {
@@ -108,17 +108,13 @@ namespace IngameScript
                         }
                     }
                 }
-                else
-                {
-                    MoveItemToRefinery(request, request.CurrentAssigned as ManagedRefinery);
-                }
             }
 
             _currentCraftString = _currentCraftSb.ToString();
             _currentCraftSb.Clear();
         }
-
-        bool MoveItemToRefinery(ProductionRequestBase request, ManagedRefinery refinery)
+        
+        bool MoveItemToRefinery(Item request, ManagedRefinery refinery)
         {
             bool success = false;
             foreach (var inventory in 

@@ -27,9 +27,11 @@ namespace IngameScript
 
             IMyTerminalBlock _owner;
             public IMyTerminalBlock Owner => _owner;
+            Program _program;
 
-            public Inventory(IMyInventory inventory)
+            public Inventory(IMyInventory inventory, Program program)
             {
+                _program =  program;
                 _owner = (IMyTerminalBlock)inventory.Owner;
                 MyInventory = inventory;
                 UpdateFilters();
@@ -72,11 +74,9 @@ namespace IngameScript
 
                 AllowedTypes = allowedTypes;
 
-                List<MyIniKey> keys = new List<MyIniKey>();
-
-                ini.GetKeys("requests", keys);
-
-                foreach (var key in keys)
+                _program._iniKeys.Clear();
+                ini.GetKeys("requests", _program._iniKeys);
+                foreach (var key in _program._iniKeys)
                 {
                     try
                     {
